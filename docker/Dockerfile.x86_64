@@ -17,7 +17,7 @@ RUN mkdir -p /opt/nvidia/isaac_ros_dev_base && dpkg-query -W | sort > /opt/nvidi
 
 # disable terminal interaction for apt
 ENV DEBIAN_FRONTEND=noninteractive
-ENV SHELL /bin/bash
+ENV SHELL=/bin/bash
 SHELL ["/bin/bash", "-c"]
 
 # Ensure we have universe
@@ -92,6 +92,8 @@ apt-get update && apt-get install -y \
         nlohmann-json3-dev
 
 # Python3 (PIP)
+RUN python3 -m pip config set global.index-url https://mirrors.ustc.edu.cn/pypi/web/simple
+
 RUN python3 -m pip install -U \
         argcomplete \
         autopep8 \
@@ -140,8 +142,9 @@ RUN --mount=type=cache,target=/var/cache/apt \
     fi
 
 # Pytorch
-RUN python3 -m pip install -U --extra-index-url https://download.pytorch.org/whl/cu121 \
-        torch \
+COPY torch-2.5.0+cu121-cp310-cp310-linux_x86_64.whl /tmp/torch-2.5.0+cu121-cp310-cp310-linux_x86_64.whl
+RUN python3 -m pip install /tmp/torch-2.5.0+cu121-cp310-cp310-linux_x86_64.whl && \ 
+        python3 -m pip install -U --extra-index-url https://download.pytorch.org/whl/cu121 \
         torchvision \
         torchaudio
 
@@ -158,11 +161,13 @@ ENV TRT_INC_PATH="/usr/include/x86_64-linux-gnu"
 ENV LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:/opt/tritonserver/lib"
 
 # Install CV-CUDA
+COPY nvcv-dev-0.5.0_beta-cuda12-x86_64-linux.deb /tmp/nvcv-dev-0.5.0_beta-cuda12-x86_64-linux.deb
+COPY nvcv-lib-0.5.0_beta-cuda12-x86_64-linux.deb /tmp/nvcv-lib-0.5.0_beta-cuda12-x86_64-linux.deb
 RUN --mount=type=cache,target=/var/cache/apt \
     cd /tmp && \
-    wget https://github.com/CVCUDA/CV-CUDA/releases/download/v0.5.0-beta/nvcv-lib-0.5.0_beta-cuda12-x86_64-linux.deb && \
+    # wget https://github.com/CVCUDA/CV-CUDA/releases/download/v0.5.0-beta/nvcv-lib-0.5.0_beta-cuda12-x86_64-linux.deb && \
     dpkg -i nvcv-lib-0.5.0_beta-cuda12-x86_64-linux.deb && \
-    wget https://github.com/CVCUDA/CV-CUDA/releases/download/v0.5.0-beta/nvcv-dev-0.5.0_beta-cuda12-x86_64-linux.deb && \
+    # wget https://github.com/CVCUDA/CV-CUDA/releases/download/v0.5.0-beta/nvcv-dev-0.5.0_beta-cuda12-x86_64-linux.deb && \
     dpkg -i nvcv-dev-0.5.0_beta-cuda12-x86_64-linux.deb
 
 # Add MQTT binaries and libraries

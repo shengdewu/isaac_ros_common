@@ -32,7 +32,8 @@ RUN echo "Warning: Using the PYTHONWARNINGS environment variable to silence setu
 
 # Add ROS 2 apt repository
 RUN --mount=type=cache,target=/var/cache/apt \
-    curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    curl -sSL https://raw.gitmirror.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg \
+    && apt-key del F42ED6FBAB17C654 \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(source /etc/os-release && echo $UBUNTU_CODENAME) main" | tee /etc/apt/sources.list.d/ros2.list > /dev/null \
     && apt-get update
 
@@ -66,7 +67,8 @@ RUN python3 -m pip install -U \
         matplotlib \
         pandas \
         rosbags \
-        setuptools==65.7.0
+        setuptools==65.7.0 \
+        6-rosdep
 
 # Install ROS 2 Humble
 RUN --mount=type=cache,target=/var/cache/apt \
@@ -127,6 +129,8 @@ apt-get update && apt-get install -y \
     ros-humble-vision-msgs-rviz-plugins
 
 # Setup rosdep
+RUN 6-rosdep
+
 COPY rosdep/extra_rosdeps.yaml /etc/ros/rosdep/sources.list.d/nvidia-isaac.yaml
 RUN --mount=type=cache,target=/var/cache/apt \
     rosdep init \
@@ -134,12 +138,14 @@ RUN --mount=type=cache,target=/var/cache/apt \
     && sed -i 's|gbpdistro https://raw.githubusercontent.com/ros/rosdistro/master/releases/fuerte.yaml fuerte||g' /etc/ros/rosdep/sources.list.d/20-default.list \
     && rosdep update
 
+RUN sed -i 's|https://https://mirrors.tuna.tsinghua.edu.cn/rosdistro/master/index-v4.yaml|https://mirrors.tuna.tsinghua.edu.cn/rosdistro/index-v4.yaml|g' /usr/lib/python3/dist-packages/rosdistro/__init__.py
+
 ####### -- Install updated packages over installed debians
 
 # Install negotiated from source
 RUN --mount=type=cache,target=/var/cache/apt \
     mkdir -p ${ROS_ROOT}/src && cd ${ROS_ROOT}/src \
-    && git clone https://github.com/osrf/negotiated && cd negotiated && git checkout master \
+    && git clone --depth 1 https://github.com/osrf/negotiated && cd negotiated && git checkout master \
     && source ${ROS_ROOT}/setup.bash \
     && cd negotiated_interfaces && bloom-generate rosdebian && fakeroot debian/rules binary \
     && cd ../ && apt-get install -y ./*.deb && rm ./*.deb \
@@ -222,25 +228,28 @@ apt-get update && apt-get install -y \
     ros-humble-xacro
 
 # Install various moveit_resources packages from source.
-RUN --mount=type=cache,target=/var/cache/apt \
-    mkdir -p ${ROS_ROOT}/src && cd ${ROS_ROOT}/src \
-    && git clone https://github.com/ros-planning/moveit_resources.git -b humble \
-    && cd moveit_resources && source ${ROS_ROOT}/setup.bash \
-    && cd fanuc_description && bloom-generate rosdebian && fakeroot debian/rules binary \
-    && cd .. && apt-get install -y ./*.deb && rm *.deb \
-    && cd fanuc_moveit_config && bloom-generate rosdebian && fakeroot debian/rules binary \
-    && cd .. && apt-get install -y ./*.deb && rm *.deb \
-    && cd panda_description && bloom-generate rosdebian && fakeroot debian/rules binary \
-    && cd .. && apt-get install -y ./*.deb && rm *.deb \
-    && cd panda_moveit_config && bloom-generate rosdebian && fakeroot debian/rules binary \
-    && cd .. && apt-get install -y ./*.deb && rm *.deb \
-    && cd pr2_description && bloom-generate rosdebian && fakeroot debian/rules binary \
-    && cd .. && apt-get install -y ./*.deb && rm *.deb \
-    && cd moveit_resources && bloom-generate rosdebian && fakeroot debian/rules binary \
-    && cd .. && apt-get install -y ./*.deb && rm *.deb
+# RUN --mount=type=cache,target=/var/cache/apt \
+#     mkdir -p ${ROS_ROOT}/src && cd ${ROS_ROOT}/src \
+#     && git clone https://github.com/ros-planning/moveit_resources.git -b humble \
+#     && cd moveit_resources && source ${ROS_ROOT}/setup.bash \
+#     && cd fanuc_description && bloom-generate rosdebian && fakeroot debian/rules binary \
+#     && cd .. && apt-get install -y ./*.deb && rm *.deb \
+#     && cd fanuc_moveit_config && bloom-generate rosdebian && fakeroot debian/rules binary \
+#     && cd .. && apt-get install -y ./*.deb && rm *.deb \
+#     && cd panda_description && bloom-generate rosdebian && fakeroot debian/rules binary \
+#     && cd .. && apt-get install -y ./*.deb && rm *.deb \
+#     && cd panda_moveit_config && bloom-generate rosdebian && fakeroot debian/rules binary \
+#     && cd .. && apt-get install -y ./*.deb && rm *.deb \
+#     && cd pr2_description && bloom-generate rosdebian && fakeroot debian/rules binary \
+#     && cd .. && apt-get install -y ./*.deb && rm *.deb \
+#     && cd moveit_resources && bloom-generate rosdebian && fakeroot debian/rules binary \
+#     && cd .. && apt-get install -y ./*.deb && rm *.deb
 
 # Install MoveIt task constructor from source.  The "demo" package depends on moveit_resources_panda_moveit_config,
 # installed from source above.
+RUN git config --global http.proxy http://127.0.0.1:7890
+RUN git config --global https.proxy http://127.0.0.1:7890
+
 RUN --mount=type=cache,target=/var/cache/apt \
     mkdir -p ${ROS_ROOT}/src && cd ${ROS_ROOT}/src \
     && git clone https://github.com/ros-planning/moveit_task_constructor.git -b humble \
@@ -264,12 +273,12 @@ apt-get update && apt-get install -y \
     ros-humble-moveit-hybrid-planning
 
 # Install moveit2_tutorials from source (depends on moveit_hybrid_planning).
-RUN --mount=type=cache,target=/var/cache/apt \
-    mkdir -p ${ROS_ROOT}/src && cd ${ROS_ROOT}/src \
-    && git clone https://github.com/ros-planning/moveit2_tutorials.git -b humble \
-    && cd moveit2_tutorials && source ${ROS_ROOT}/setup.bash \
-    && bloom-generate rosdebian && fakeroot debian/rules binary \
-    && cd ../ && apt-get install -y ./*.deb && rm ./*.deb
+# RUN --mount=type=cache,target=/var/cache/apt \
+#     mkdir -p ${ROS_ROOT}/src && cd ${ROS_ROOT}/src \
+#     && git clone https://github.com/ros-planning/moveit2_tutorials.git -b humble \
+#     && cd moveit2_tutorials && source ${ROS_ROOT}/setup.bash \
+#     && bloom-generate rosdebian && fakeroot debian/rules binary \
+#     && cd ../ && apt-get install -y ./*.deb && rm ./*.deb
 
 # Install paho-mqtt for isaac_ros_mission_client
 RUN python3 -m pip install -U \
